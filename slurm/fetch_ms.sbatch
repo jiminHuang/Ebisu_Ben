@@ -15,8 +15,14 @@ OUT=$EB/models/$(basename $REPO); mkdir -p $OUT; cd $OUT
 LIST=$OUT/.ms_files.tsv
 curl -sfL "https://www.modelscope.cn/api/v1/models/$REPO/repo/files?Recursive=true" | $PY_EVAL -c "
 import json,sys
-for f in json.load(sys.stdin)['Data']['Files']:
-    if f['Type']=='blob' and not f['Path'].startswith('original/') and not f['Path'].endswith('.pth'): print(f['Path'], f['Size'], sep='\t')" > $LIST
+fs=[f for f in json.load(sys.stdin)['Data']['Files'] if f['Type']=='blob']
+has_st=any(f['Path'].endswith('.safetensors') and not f['Path'].startswith('consolidated') for f in fs)
+for f in fs:
+    p=f['Path']
+    if p.startswith('original/') or p.endswith('.pth') or p.startswith('consolidated'): continue
+    if has_st and (p.endswith('.bin') and 'pytorch_model' in p or p=='pytorch_model.bin.index.json'): continue
+    print(p, f['Size'], sep='\t')" > $LIST
+[ -s $LIST ] || { echo "empty ModelScope file list for $REPO"; exit 1; }
 echo "$(wc -l < $LIST) files, $(awk '{s+=$2} END{printf "%.1f GB", s/1e9}' $LIST)"
 for round in $(seq 1 30); do
   awk -F'\t' '{ cmd="stat -c %s \"" $1 "\" 2>/dev/null"; sz=""; cmd | getline sz; close(cmd); if (sz != $2) print $1 }' $LIST > $OUT/.ms_todo
