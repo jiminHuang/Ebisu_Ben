@@ -9,10 +9,12 @@
 #SBATCH --mem=240G
 #SBATCH --time=08:00:00
 #SBATCH --output=/remote_dir/home/qianqianxie/ebisu/logs/%x_%j.out
-# Usage: sbatch --gres=gpu:N --export=ALL,MODEL=<hf id or local path>,TASKS=ebisu_oct26|ebisu_jfkrc,MAXLEN=8192 slurm/eval.sbatch
+# Usage: sbatch --gres=gpu:N --export=ALL,MODEL=<path>,TASKS=ebisu_jficr+ebisu_jfte+ebisu_jfkrc,MAXLEN=8192[,EXTRA_ARGS=a=1+b=2] slurm/eval.sbatch
+# ('+' instead of ',' because sbatch --export splits on commas)
 set -euo pipefail
 source /remote_dir/home/qianqianxie/ebisu/Ebisu_Ben/slurm/env.sh
-: "${MODEL:?}" "${TASKS:=ebisu_oct26}" "${MAXLEN:=8192}" "${EXTRA_ARGS:=}"
+: "${MODEL:?}" "${TASKS:=ebisu_jficr+ebisu_jfte+ebisu_jfkrc}" "${MAXLEN:=8192}" "${EXTRA_ARGS:=}"
+TASKS=${TASKS//+/,}; EXTRA_ARGS=${EXTRA_ARGS//+/,}
 NGPU=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
 echo "MODEL=$MODEL TASKS=$TASKS MAXLEN=$MAXLEN GPUS=$CUDA_VISIBLE_DEVICES host=$(hostname) commit=$(git -C $EB_CODE rev-parse --short HEAD)"
 cd $EB_CODE
@@ -20,4 +22,4 @@ $LM_EVAL --model vllm \
   --model_args "pretrained=$MODEL,tensor_parallel_size=$NGPU,gpu_memory_utilization=0.9,max_model_len=$MAXLEN,seed=0${EXTRA_ARGS:+,$EXTRA_ARGS}" \
   --tasks "$TASKS" --batch_size auto --apply_chat_template --log_samples \
   --include_path $EB_CODE/tasks/ebisu_oct26 \
-  --output_path $EB_RES/$(basename "$MODEL")
+  --output_path $EB_RES/$(basename "$MODEL")${RUN_TAG:+_$RUN_TAG}
