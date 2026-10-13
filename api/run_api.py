@@ -59,6 +59,7 @@ async def main():
     ap.add_argument("--tasks", default="icr,te,krc"); ap.add_argument("--conc", type=int, default=32)
     ap.add_argument("--max-tokens", type=int, default=0, help="override all per-task budgets (reasoning models)")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--retry-errors", action="store_true", help="only re-query rows whose saved output is an __ERROR__")
     a = ap.parse_args()
     client = openai.AsyncOpenAI(base_url=os.environ.get("GATEWAY_BASE_URL", "https://endpoint.greatrouter.com/v1"),
                                 api_key=os.environ["GATEWAY_KEY"], timeout=600, max_retries=0)
@@ -69,7 +70,17 @@ async def main():
     tasks = a.tasks.split(",")
     rows = {t: [json.loads(l) for l in open(Path(a.data) / FILES[t])] for t in tasks}
     t0 = time.time()
-    res = await asyncio.gather(*[asyncio.gather(*[call(client, a.model, r["query"], MAXTOK[t], sem) for r in rows[t]]) for t in tasks])
+    async def keep(x):
+        return x
+    prev = {}
+    if a.retry_errors:
+        for t in tasks:
+            prev[t] = [json.loads(l) for l in open(out / f"{t}_samples.jsonl")]
+    def job(t, i, r):
+        if t in prev and not prev[t][i]["output"].startswith("__ERROR__"):
+            return keep((prev[t][i]["output"], prev[t][i]["usage"]))
+        return call(client, a.model, r["query"], MAXTOK[t], sem)
+    res = await asyncio.gather(*[asyncio.gather(*[job(t, i, r) for i, r in enumerate(rows[t])]) for t in tasks])
     summary = {"model": a.model, "seconds": round(time.time() - t0)}
     for t, rr in zip(tasks, res):
         outs = [o for o, _ in rr]
