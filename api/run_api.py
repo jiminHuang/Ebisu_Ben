@@ -57,11 +57,15 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True); ap.add_argument("--data", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--tasks", default="icr,te,krc"); ap.add_argument("--conc", type=int, default=32)
+    ap.add_argument("--max-tokens", type=int, default=0, help="override all per-task budgets (reasoning models)")
+    ap.add_argument("--tag", default="")
     a = ap.parse_args()
     client = openai.AsyncOpenAI(base_url=os.environ.get("GATEWAY_BASE_URL", "https://endpoint.greatrouter.com/v1"),
                                 api_key=os.environ["GATEWAY_KEY"], timeout=600, max_retries=0)
     sem = asyncio.Semaphore(a.conc)
-    out = Path(a.out) / a.model; out.mkdir(parents=True, exist_ok=True)
+    out = Path(a.out) / (a.model + (f"_{a.tag}" if a.tag else ""));
+    if a.max_tokens: MAXTOK.update({k: a.max_tokens for k in MAXTOK})
+    out.mkdir(parents=True, exist_ok=True)
     tasks = a.tasks.split(",")
     rows = {t: [json.loads(l) for l in open(Path(a.data) / FILES[t])] for t in tasks}
     t0 = time.time()
