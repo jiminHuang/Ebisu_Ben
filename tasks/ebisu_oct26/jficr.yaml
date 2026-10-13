@@ -14,7 +14,7 @@ generation_kwargs:
     - "@@"
   do_sample: false
   temperature: 0.0
-  max_gen_toks: 1024
+  max_gen_toks: 512  # same as the collaborators' JFICT_gen.yaml
 filter_list:
   - name: "score-first"
     filter:
