@@ -1,0 +1,31 @@
+# JF-KAI (keiretsu affiliation, 346 rows; TheFinAI/JF-KRC-3, jf_krc_merged_release_compact_v2b.jsonl)
+task: ebisu_jfkrc
+tag: ebisu_oct26_long
+dataset_path: json
+dataset_kwargs:
+  data_files:
+    test: /remote_dir/home/qianqianxie/ebisu/data/JF-KRC-3/jf_krc_merged_release_compact_v2b.jsonl
+test_split: test
+output_type: generate_until
+doc_to_text: '{{query}}'
+doc_to_target: '{{answer}}'
+generation_kwargs:
+  until:
+    - "@@"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+filter_list:
+  - name: "label-first"
+    filter:
+      - function: "regex"
+        regex_pattern: '(?i)(mitsubishi|mitsui|sumitomo|fuyo|sanwa|dkb|other)'
+      - function: "take_first"
+      - function: "lowercase"
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+    ignore_case: true
+metadata:
+  version: '1.0'
