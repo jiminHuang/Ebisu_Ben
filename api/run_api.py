@@ -20,8 +20,25 @@ KRC_RE = re.compile(r"(mitsubishi|mitsui|sumitomo|fuyo|sanwa|dkb|other)", re.I)
 REASONING = re.compile(r"^(gpt-5|o\d)")
 
 
-async def call(client, model, prompt, max_tok, sem):
+def _enum(name, labels):
+    return {"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": {
+        "type": "object", "properties": {"label": {"type": "string", "enum": labels}},
+        "required": ["label"], "additionalProperties": False}}}
+
+
+# --constrained: schema-constrained outputs (labels restricted to the label set; JF-TE must be a list of string lists)
+SCHEMA = {"icr": _enum("commitment", ["+2", "+1", "0", "-1", "-2"]),
+          "krc": _enum("keiretsu", ["mitsubishi", "mitsui", "sumitomo", "fuyo", "sanwa", "dkb", "other"]),
+          "te": {"type": "json_schema", "json_schema": {"name": "terms", "strict": True, "schema": {
+              "type": "object", "properties": {"terms": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}},
+              "required": ["terms"], "additionalProperties": False}}}}
+CONSTRAINED = False
+
+
+async def call(client, model, prompt, max_tok, sem, task=None):
     kw = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+    if CONSTRAINED:
+        kw["response_format"] = SCHEMA[task]
     if REASONING.match(model):
         kw["max_completion_tokens"] = max_tok
     else:
@@ -59,8 +76,11 @@ async def main():
     ap.add_argument("--tasks", default="icr,te,krc"); ap.add_argument("--conc", type=int, default=32)
     ap.add_argument("--max-tokens", type=int, default=0, help="override all per-task budgets (reasoning models)")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--constrained", action="store_true")
     ap.add_argument("--retry-errors", action="store_true", help="only re-query rows whose saved output is an __ERROR__")
     a = ap.parse_args()
+    global CONSTRAINED
+    CONSTRAINED = a.constrained
     client = openai.AsyncOpenAI(base_url=os.environ.get("GATEWAY_BASE_URL", "https://endpoint.greatrouter.com/v1"),
                                 api_key=os.environ["GATEWAY_KEY"], timeout=600, max_retries=0)
     sem = asyncio.Semaphore(a.conc)
@@ -79,7 +99,7 @@ async def main():
     def job(t, i, r):
         if t in prev and not prev[t][i]["output"].startswith("__ERROR__"):
             return keep((prev[t][i]["output"], prev[t][i]["usage"]))
-        return call(client, a.model, r["query"], MAXTOK[t], sem)
+        return call(client, a.model, r["query"], MAXTOK[t], sem, t)
     res = await asyncio.gather(*[asyncio.gather(*[job(t, i, r) for i, r in enumerate(rows[t])]) for t in tasks])
     summary = {"model": a.model, "seconds": round(time.time() - t0)}
     for t, rr in zip(tasks, res):
