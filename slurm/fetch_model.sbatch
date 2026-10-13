@@ -13,5 +13,6 @@ source /remote_dir/home/qianqianxie/ebisu/Ebisu_Ben/slurm/env.sh
 export HF_TOKEN=$(cat $HF_HOME/token 2>/dev/null || cat ~/.cache/huggingface/token)
 OUT=$EB/models/$(basename $REPO); mkdir -p $OUT
 HFCLI=/persist_data/home/qianqianxie/conda_envs/finben/bin/huggingface-cli
-$HFCLI download $REPO --local-dir $OUT --exclude "original/*" "*.pth" --max-workers 8
+# the cluster uplink drops long connections; huggingface-cli resumes partial files, so retry until it succeeds
+for i in $(seq 1 50); do $HFCLI download $REPO --local-dir $OUT --exclude "original/*" "*.pth" --max-workers 8 && break; echo "retry $i"; sleep 10; done
 du -sh $OUT; ls $OUT
